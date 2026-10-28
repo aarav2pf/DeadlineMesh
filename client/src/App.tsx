@@ -5,11 +5,14 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Dashboard from "./pages/Dashboard";
 import ProjectTasks from "./pages/ProjectTasks";
+import WorkspaceTool from "./pages/WorkspaceTool";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
 
-  if (loading) return <div className="loading-screen">Loading DeadlineMesh...</div>;
+  if (loading) {
+    return <div className="loading-screen">Loading DeadlineMesh...</div>;
+  }
 
   return user ? <>{children}</> : <Navigate to="/login" replace />;
 }
@@ -17,7 +20,9 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
 
-  if (loading) return <div className="loading-screen">Loading DeadlineMesh...</div>;
+  if (loading) {
+    return <div className="loading-screen">Loading DeadlineMesh...</div>;
+  }
 
   return user ? <Navigate to="/dashboard" replace /> : <>{children}</>;
 }
@@ -25,10 +30,8 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <Routes>
-      <Route
-        path="/"
-        element={<Navigate to="/dashboard" replace />}
-      />
+      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
       <Route
         path="/login"
         element={
@@ -37,6 +40,7 @@ export default function App() {
           </PublicRoute>
         }
       />
+
       <Route
         path="/signup"
         element={
@@ -45,6 +49,7 @@ export default function App() {
           </PublicRoute>
         }
       />
+
       <Route
         path="/dashboard"
         element={
@@ -53,14 +58,25 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+
       <Route
-      path="/projects/:projectId"
+        path="/projects/:projectId"
         element={
           <ProtectedRoute>
             <ProjectTasks />
           </ProtectedRoute>
         }
       />
+
+      <Route
+        path="/workspace/:tool"
+        element={
+          <ProtectedRoute>
+            <WorkspaceTool />
+          </ProtectedRoute>
+        }
+      />
+
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

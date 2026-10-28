@@ -4,7 +4,7 @@ import { requireAuth, type AuthRequest } from "../middleware/auth";
 import { calculateCriticalPath } from "../services/criticalPath";
 import { Router, type Response } from "express";
 import { simulateTaskDelay } from "../services/whatIfSimulation";
-
+import { analyzeScheduleRisk } from "../services/scheduleRisk";
 
 const router = Router();
 
@@ -347,6 +347,83 @@ router.post(
       console.error("What-if simulation failed:", error);
       return res.status(500).json({
         message: "Could not simulate the task delay.",
+      });
+    }
+  }
+);
+
+
+router.get(
+  "/:projectId/schedule-risk",
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const projectId = String(req.params.projectId);
+
+      if (!/^\d+$/.test(projectId) || Number(projectId) <= 0) {
+        return res.status(400).json({ message: "Invalid project ID." });
+      }
+
+      if (!req.userId) {
+        return res.status(401).json({ message: "Authentication required." });
+      }
+
+      const projectResult = await pool.query(
+        "SELECT id FROM projects WHERE id = $1 AND user_id = $2",
+        [projectId, req.userId]
+      );
+
+      if (projectResult.rowCount === 0) {
+        return res.status(404).json({ message: "Project not found." });
+      }
+
+      const result = await pool.query(
+        `SELECT
+           t.id,
+           t.name,
+           t.duration,
+           t.status,
+           COALESCE(
+             ARRAY_AGG(td.depends_on_task_id)
+               FILTER (WHERE td.depends_on_task_id IS NOT NULL),
+             ARRAY[]::BIGINT[]
+           ) AS dependencies
+         FROM tasks t
+         LEFT JOIN task_dependencies td ON td.task_id = t.id
+         WHERE t.project_id = $1
+         GROUP BY t.id
+         ORDER BY t.id`,
+        [projectId]
+      );
+
+      const tasks = result.rows.map((task) => ({
+        id: Number(task.id),
+        name: task.name as string,
+        duration: Number(task.duration),
+        status: task.status as "Pending" | "In Progress" | "Completed",
+        dependencies: (
+          task.dependencies as (number | string)[]
+        ).map(Number),
+      }));
+
+      const analysis = analyzeScheduleRisk(tasks);
+
+      return res.status(200).json({ analysis });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (
+          error.message.includes("circular dependencies") ||
+          error.message.includes("Invalid task data") ||
+          error.message.includes("invalid dependency") ||
+          error.message.includes("cannot depend on itself")
+        )
+      ) {
+        return res.status(400).json({ message: error.message });
+      }
+
+      console.error("Schedule risk analysis failed:", error);
+      return res.status(500).json({
+        message: "Could not analyse schedule risk.",
       });
     }
   }

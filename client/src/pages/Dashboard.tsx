@@ -1,6 +1,6 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   CalendarDays,
   Check,
@@ -41,6 +41,7 @@ function getErrorMessage(error: unknown) {
 export default function Dashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -168,7 +169,7 @@ export default function Dashboard() {
     return (
       !query ||
       project.name.toLowerCase().includes(query) ||
-      project.description.toLowerCase().includes(query)
+      (project.description ?? "").toLowerCase().includes(query)
     );
   });
 
@@ -182,6 +183,14 @@ export default function Dashboard() {
     0,
   );
 
+  const workspaceTool = location.pathname.startsWith("/workspace/")
+    ? location.pathname.split("/")[2]
+    : "";
+
+  function navigateToTool(tool: string) {
+    navigate(`/workspace/${tool}`);
+  }
+
   return (
     <main className="workspace">
       <aside className="sidebar">
@@ -194,29 +203,52 @@ export default function Dashboard() {
         </div>
 
         <div className="sidebar-label">WORKSPACE</div>
-        <div className="nav-item nav-item-active">
+
+        <button
+          type="button"
+          className={`nav-item ${!workspaceTool ? "nav-item-active" : ""}`}
+          onClick={() => navigate("/dashboard")}
+        >
           <FolderKanban size={17} />
           <span>Projects</span>
           <span className="nav-count">{projects.length}</span>
-        </div>
-        <div className="nav-item nav-item-disabled">
+        </button>
+
+        <button
+          type="button"
+          className={`nav-item ${workspaceTool === "graph" ? "nav-item-active" : ""}`}
+          onClick={() => navigateToTool("graph")}
+        >
           <span className="nav-symbol">◇</span>
           <span>Task Graph</span>
-          <span className="nav-tag">SOON</span>
-        </div>
-        <div className="nav-item nav-item-disabled">
+        </button>
+
+        <button
+          type="button"
+          className={`nav-item ${workspaceTool === "timeline" ? "nav-item-active" : ""}`}
+          onClick={() => navigateToTool("timeline")}
+        >
           <CalendarDays size={17} />
           <span>Timeline</span>
-          <span className="nav-tag">SOON</span>
-        </div>
-        <div className="nav-item nav-item-disabled">
+        </button>
+
+        <button
+          type="button"
+          className={`nav-item ${workspaceTool === "critical-path" ? "nav-item-active" : ""}`}
+          onClick={() => navigateToTool("critical-path")}
+        >
           <span className="nav-symbol">⌁</span>
           <span>Critical Path</span>
-        </div>
-        <div className="nav-item nav-item-disabled">
+        </button>
+
+        <button
+          type="button"
+          className={`nav-item ${workspaceTool === "simulations" ? "nav-item-active" : ""}`}
+          onClick={() => navigateToTool("simulations")}
+        >
           <span className="nav-symbol">◷</span>
           <span>Simulations</span>
-        </div>
+        </button>
 
         <div className="sidebar-bottom">
           <div className="system-status">
