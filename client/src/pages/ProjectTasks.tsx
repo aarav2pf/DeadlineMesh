@@ -91,7 +91,19 @@ export default function ProjectTasks() {
   // Display compact, project-local task numbers. Real database IDs remain in
   // state and are still used for API requests and dependency relationships.
   const taskNumberById = useMemo(
-    () => new Map<number, number>(tasks.map((task, index) => [task.id, index + 1])),
+    () => {
+      // The API returns tasks newest-first. Number them by creation time so
+      // the oldest task in each project is #1, regardless of display order.
+      const tasksInCreationOrder = [...tasks].sort((a, b) => {
+        const createdAtDifference =
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        return createdAtDifference || a.id - b.id;
+      });
+
+      return new Map<number, number>(
+        tasksInCreationOrder.map((task, index) => [task.id, index + 1]),
+      );
+    },
     [tasks],
   );
 
