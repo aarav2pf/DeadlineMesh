@@ -572,6 +572,31 @@ router.patch("/:taskId", async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: dependencyError });
     }
 
+    // A task may only be completed after all of its prerequisites are completed.
+    // Use the proposed dependency list so this also covers requests that update
+    // status and dependencies together. Keep this check inside the transaction.
+    if (status === "Completed" && dependencies.length > 0) {
+      const incompleteDependencies = await client.query(
+        `SELECT name
+         FROM tasks
+         WHERE id = ANY($1::bigint[])
+           AND status <> 'Completed'`,
+        [dependencies]
+      );
+
+      if (incompleteDependencies.rows.length > 0) {
+        await client.query("ROLLBACK");
+
+        const names = incompleteDependencies.rows
+          .map((task) => String(task.name))
+          .join(", ");
+
+        return res.status(400).json({
+          message: `Cannot complete this task until these prerequisites are completed: ${names}.`,
+        });
+      }
+    }
+
     const result = await client.query(
       `UPDATE tasks
        SET name = $1,

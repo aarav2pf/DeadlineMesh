@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, RefreshCw } from "lucide-react";
+import { ReactFlow, Background, Controls, MiniMap, type Edge, type Node } from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import { apiRequest } from "../lib/api";
 import type { Project } from "../types/project";
 import type {
@@ -62,6 +64,7 @@ export default function WorkspaceTool() {
   const [delay, setDelay] = useState("1");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [selectedGraphTaskId, setSelectedGraphTaskId] = useState<number | null>(null);
 
   const selectedTool = validTool ? (tool as ToolName) : null;
 
@@ -175,6 +178,97 @@ export default function WorkspaceTool() {
     [risk],
   );
 
+  const graphLayout = useMemo(() => {
+    const taskById = new Map(tasks.map((task) => [task.id, task]));
+    const depthById = new Map<number, number>();
+
+    function getDepth(taskId: number, visiting = new Set<number>()): number {
+      const cached = depthById.get(taskId);
+      if (cached !== undefined) return cached;
+      if (visiting.has(taskId)) return 0;
+
+      const task = taskById.get(taskId);
+      if (!task || !task.dependencies?.length) {
+        depthById.set(taskId, 0);
+        return 0;
+      }
+
+      visiting.add(taskId);
+      const depth = 1 + Math.max(
+        ...task.dependencies.map((dependencyId) =>
+          getDepth(dependencyId, new Set(visiting)),
+        ),
+      );
+      depthById.set(taskId, depth);
+      return depth;
+    }
+
+    tasks.forEach((task) => getDepth(task.id));
+
+    const rowsByDepth = new Map<number, number>();
+    const nodes: Node[] = tasks.map((task) => {
+      const depth = depthById.get(task.id) ?? 0;
+      const row = rowsByDepth.get(depth) ?? 0;
+      rowsByDepth.set(depth, row + 1);
+
+      const taskRisk = riskByTask.get(task.id)?.risk_level ?? "Unknown";
+      const isCritical = criticalIds.has(task.id);
+      const isBlocked = task.status !== "Completed" && (task.dependencies ?? []).some(
+        (dependencyId) => taskById.get(dependencyId)?.status !== "Completed",
+      );
+      const background = task.status === "Completed"
+        ? "#d8f0df"
+        : isBlocked
+          ? "#ffe4c7"
+          : isCritical
+            ? "#f8d7da"
+            : "#e1ebfa";
+      const border = isCritical ? "#c33d46" : isBlocked ? "#bd6b18" : "#6886a8";
+
+      return {
+        id: String(task.id),
+        position: { x: depth * 280, y: row * 125 },
+        data: {
+          label: `#${task.id} — ${task.name}\n${task.status} · ${task.duration} day(s) · ${taskRisk} risk`,
+        },
+        style: {
+          width: 220,
+          minHeight: 76,
+          whiteSpace: "pre-line",
+          lineHeight: 1.5,
+          fontSize: 12,
+          border: `2px solid ${border}`,
+          borderRadius: 4,
+          background,
+          color: "#202020",
+          padding: 10,
+          fontFamily: "inherit",
+        },
+      };
+    });
+
+    const edges: Edge[] = tasks.flatMap((task) =>
+      (task.dependencies ?? []).map((dependencyId) => ({
+        id: `${dependencyId}-${task.id}`,
+        source: String(dependencyId),
+        target: String(task.id),
+        animated: criticalIds.has(dependencyId) && criticalIds.has(task.id),
+        style: {
+          stroke: criticalIds.has(dependencyId) && criticalIds.has(task.id)
+            ? "#c33d46"
+            : "#777",
+          strokeWidth: criticalIds.has(dependencyId) && criticalIds.has(task.id) ? 2.5 : 1.5,
+        },
+        label: "requires",
+        labelStyle: { fontSize: 10, fill: "#555" },
+      })),
+    );
+
+    return { nodes, edges };
+  }, [tasks, riskByTask, criticalIds]);
+
+  const selectedGraphTask = tasks.find((task) => task.id === selectedGraphTaskId) ?? null;
+
   async function runSimulation() {
     if (!projectId || !taskId) {
       setError("Select a task to simulate.");
@@ -215,7 +309,7 @@ export default function WorkspaceTool() {
 
   if (!selectedTool) {
     return (
-      <main className="task-page">
+      <main className="task-page" id="main-content" tabIndex={-1}>
         <section className="task-page-content">
           <h1>Unknown workspace tool</h1>
           <button onClick={() => navigate("/dashboard")}>
@@ -227,7 +321,7 @@ export default function WorkspaceTool() {
   }
 
   return (
-    <main className="task-page">
+    <main className="task-page" id="main-content" tabIndex={-1}>
       <header className="task-page-titlebar">
         <span>DEADLINEMESH.EXE — {toolTitles[selectedTool]}</span>
         <button
@@ -298,45 +392,51 @@ export default function WorkspaceTool() {
           </section>
         )}
 
-        {selectedTool === "graph" && (
+        {selectedTool === "graph" && tasks.length > 0 && (
           <section className="task-list-panel">
             <div className="task-list-heading">
-              <h2>DEPENDENCY GRAPH</h2>
+              <h2>INTERACTIVE DEPENDENCY GRAPH</h2>
+              <span>{tasks.length} tasks · {graphLayout.edges.length} dependencies</span>
             </div>
-            {tasks.map((task) => (
-              <article className="task-card" key={task.id}>
-                <div className="task-card-main">
-                  <div className="task-card-title">
-                    <h3>#{task.id} — {task.name}</h3>
-                    {criticalIds.has(task.id) && (
-                      <span className="task-blocked-badge">CRITICAL</span>
-                    )}
-                  </div>
-                  <p>
-                    {task.dependencies?.length
-                      ? `Depends on: ${task.dependencies
-                          .map((id) => {
-                            const dependency = tasks.find((item) => item.id === id);
-                            return dependency
-                              ? `#${id} ${dependency.name}`
-                              : `#${id}`;
-                          })
-                          .join(", ")}`
-                      : "No prerequisites"}
-                  </p>
-                  <div className="task-metadata">
-                    <span>{task.status}</span>
-                    <span>{task.duration} day(s)</span>
-                    <span>
-                      Risk: {riskByTask.get(task.id)?.risk_level ?? "Unknown"}
-                    </span>
-                  </div>
-                </div>
-              </article>
-            ))}
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 12, fontSize: 12 }}>
+              <span>🟩 Completed</span>
+              <span>🟧 Blocked</span>
+              <span>🟥 Critical path</span>
+              <span>🟦 Other tasks</span>
+            </div>
+
+            <div style={{ height: 540, width: "100%", border: "1px solid #999", background: "var(--surface, #f4f4f4)" }}>
+              <ReactFlow
+                nodes={graphLayout.nodes}
+                edges={graphLayout.edges}
+                fitView
+                fitViewOptions={{ padding: 0.2 }}
+                minZoom={0.2}
+                maxZoom={1.5}
+                onNodeClick={(_, node) => setSelectedGraphTaskId(Number(node.id))}
+              >
+                <Background />
+                <MiniMap pannable zoomable />
+                <Controls />
+              </ReactFlow>
+            </div>
+
+            {selectedGraphTask && (
+              <div className="task-critical-sequence" style={{ marginTop: 16 }}>
+                <strong>SELECTED TASK: #{selectedGraphTask.id} — {selectedGraphTask.name}</strong>
+                <p>Status: {selectedGraphTask.status} · Duration: {selectedGraphTask.duration} day(s) · Priority: {selectedGraphTask.priority}</p>
+                <p>
+                  Prerequisites: {(selectedGraphTask.dependencies ?? []).length
+                    ? selectedGraphTask.dependencies.map((id) => tasks.find((item) => item.id === id)?.name ?? `Task #${id}`).join(", ")
+                    : "None"}
+                </p>
+                <p>Critical path: {criticalIds.has(selectedGraphTask.id) ? "Yes" : "No"} · Risk: {riskByTask.get(selectedGraphTask.id)?.risk_level ?? "Unknown"}</p>
+              </div>
+            )}
+
             <p className="task-critical-legend">
-              Each row shows prerequisite relationships. Open the project page
-              for the interactive timeline with dependency connectors.
+              Arrows point from each prerequisite to the task that depends on it. Select a node to inspect its schedule details; use the controls to zoom and pan.
             </p>
           </section>
         )}

@@ -1,5 +1,5 @@
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   CalendarDays,
@@ -16,6 +16,7 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { apiRequest } from "../lib/api";
 import type { Project } from "../types/project";
+import { useDialogAccessibility } from "../hooks/useDialogAccessibility";
 
 type ProjectsResponse = { projects: Project[] };
 type ProjectResponse = { project: Project };
@@ -52,6 +53,15 @@ export default function Dashboard() {
   const [editing, setEditing] = useState<Project | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const projectModalRef = useRef<HTMLElement | null>(null);
+
+  useDialogAccessibility(
+    modalOpen,
+    () => {
+      if (!saving) setModalOpen(false);
+    },
+    projectModalRef,
+  );
 
   const loadProjects = useCallback(async () => {
     setLoading(true);
@@ -251,10 +261,6 @@ export default function Dashboard() {
         </button>
 
         <div className="sidebar-bottom">
-          <div className="system-status">
-            <span className="status-dot" />
-            API CONNECTION ACTIVE
-          </div>
           <div className="user-card">
             <div className="user-avatar">
               {(user?.name?.[0] ?? "U").toUpperCase()}
@@ -283,12 +289,9 @@ export default function Dashboard() {
             <span>/</span>
             <strong>PROJECTS</strong>
           </div>
-          <div className="system-clock">
-            <span className="status-dot" /> SYSTEM ONLINE
-          </div>
         </header>
 
-        <div className="dashboard-main">
+        <div className="dashboard-main" id="main-content" tabIndex={-1}>
           <div className="page-heading">
             <div>
               <p className="eyebrow">DEADLINEMESH / OVERVIEW</p>
@@ -497,8 +500,25 @@ export default function Dashboard() {
           </section>
 
           <footer className="dashboard-footer">
-            <span>DEADLINEMESH BUILD 0.1.0</span>
-            <span>POSTGRESQL / EXPRESS / REACT</span>
+            <span className="creator-credit">MADE BY <strong>AARAV SADHU</strong></span>
+            <nav className="creator-links" aria-label="Creator links">
+              <a
+                href="https://github.com/aarav2pf"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="GitHub profile (opens in a new tab)"
+              >
+                GitHub ↗
+              </a>
+              <a
+                href="https://www.linkedin.com/in/aarav-sadhu-a33837275/"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="LinkedIn profile (opens in a new tab)"
+              >
+                LinkedIn ↗
+              </a>
+            </nav>
           </footer>
         </div>
       </section>
@@ -514,9 +534,11 @@ export default function Dashboard() {
         >
           <section
             className="project-modal"
+            ref={projectModalRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="project-modal-title"
+            tabIndex={-1}
           >
             <header className="window-titlebar">
               <span>{editing ? "EDIT_PROJECT.exe" : "NEW_PROJECT.exe"}</span>

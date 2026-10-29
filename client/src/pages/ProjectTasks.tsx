@@ -1,9 +1,10 @@
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Plus, RefreshCw, CheckSquare, Clock } from "lucide-react";
 import { apiRequest } from "../lib/api";
 import type { Project } from "../types/project";
+import { useDialogAccessibility } from "../hooks/useDialogAccessibility";
 import type {
   Task,
   TaskInput,
@@ -51,6 +52,7 @@ export default function ProjectTasks() {
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const taskModalRef = useRef<HTMLFormElement | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [criticalPath, setCriticalPath] =
   useState<CriticalPathAnalysis | null>(null);
@@ -85,6 +87,14 @@ export default function ProjectTasks() {
     priority: "Medium",
     dependencies: [],
   });
+
+  useDialogAccessibility(
+    showForm,
+    () => {
+      if (!saving) setShowForm(false);
+    },
+    taskModalRef,
+  );
 
   const loadData = useCallback(async () => {
     if (!projectId) return;
@@ -434,7 +444,7 @@ async function loadCriticalPath() {
   }
 
   return (
-    <main className="task-page">
+    <main className="task-page" id="main-content" tabIndex={-1}>
       <header className="task-page-titlebar">
         <span>DEADLINEMESH.EXE — TASK MANAGER</span>
         <button className="task-window-close" onClick={() => navigate("/dashboard")}>
@@ -1193,17 +1203,42 @@ async function loadCriticalPath() {
       </div>
 
       {showForm && (
-        <div className="task-modal-overlay">
-          <form className="task-modal" onSubmit={saveTask}>
+        <div
+          className="task-modal-overlay"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !saving) {
+              setShowForm(false);
+            }
+          }}
+        >
+          <form
+            className="task-modal"
+            onSubmit={saveTask}
+            ref={taskModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="task-modal-title"
+            tabIndex={-1}
+          >
             <header className="task-modal-titlebar">
-              {editingTask ? "EDIT TASK" : "CREATE NEW TASK"}
-              <button type="button" onClick={() => setShowForm(false)}>×</button>
+              <span id="task-modal-title">
+                {editingTask ? "EDIT TASK" : "CREATE NEW TASK"}
+              </span>
+              <button
+                type="button"
+                aria-label="Close task form"
+                onClick={() => setShowForm(false)}
+                disabled={saving}
+              >
+                ×
+              </button>
             </header>
 
             <div className="task-modal-fields">
               <label>
                 Task name *
                 <input
+                  autoFocus
                   required
                   maxLength={200}
                   value={form.name}
@@ -1312,7 +1347,11 @@ async function loadCriticalPath() {
             </div>
 
             <footer className="task-modal-actions">
-              <button type="button" onClick={() => setShowForm(false)}>
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                disabled={saving}
+              >
                 Cancel
               </button>
               <button className="task-primary-button" type="submit" disabled={saving}>

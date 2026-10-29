@@ -1,12 +1,34 @@
-
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import validator from "validator";
 import { pool } from "../db/pool";
 import { requireAuth, type AuthRequest } from "../middleware/auth";
+import rateLimit from "express-rate-limit";
 
 const router = Router();
+
+// Keep authentication endpoints from being abused by repeated requests.
+// Separate limits prevent signup attempts from consuming the login allowance.
+const loginRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: {
+    message: "Too many login attempts. Please try again in 15 minutes.",
+  },
+});
+
+const signupRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: {
+    message: "Too many signup attempts. Please try again in an hour.",
+  },
+});
 
 function createToken(user: { id: number; email: string }) {
   const secret = process.env.JWT_SECRET;
@@ -22,7 +44,7 @@ function createToken(user: { id: number; email: string }) {
   );
 }
 
-router.post("/signup", async (req, res) => {
+router.post("/signup", signupRateLimiter, async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
@@ -91,7 +113,7 @@ router.post("/signup", async (req, res) => {
   }
 });
 
-router.post("/login", async (req, res) => {
+router.post("/login", loginRateLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
