@@ -1,5 +1,5 @@
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Plus, RefreshCw, CheckSquare, Clock } from "lucide-react";
 import { apiRequest } from "../lib/api";
@@ -87,6 +87,13 @@ export default function ProjectTasks() {
     priority: "Medium",
     dependencies: [],
   });
+
+  // Display compact, project-local task numbers. Real database IDs remain in
+  // state and are still used for API requests and dependency relationships.
+  const taskNumberById = useMemo(
+    () => new Map<number, number>(tasks.map((task, index) => [task.id, index + 1])),
+    [tasks],
+  );
 
   useDialogAccessibility(
     showForm,
@@ -393,7 +400,7 @@ async function loadCriticalPath() {
 
     const riskByTaskId = new Map((scheduleRisk?.tasks ?? []).map((item) => [item.id, item]));
     const headers = [
-      "Task ID", "Task Name", "Status", "Priority", "Duration (days)",
+      "Task Number", "Task Name", "Status", "Priority", "Duration (days)",
       "Start Date", "Dependencies", "Earliest Start", "Earliest Finish",
       "Latest Start", "Latest Finish", "Slack (days)", "Critical", "Risk Level", "Risk Reasons", "Due Date", "Overdue",
     ];
@@ -405,13 +412,13 @@ async function loadCriticalPath() {
       const task = tasks.find((candidate) => candidate.id === item.task_id);
       const risk = riskByTaskId.get(item.task_id);
       return [
-        item.task_id,
+        taskNumberById.get(item.task_id) ?? "",
         item.task_name,
         task?.status ?? "",
         task?.priority ?? "",
         item.duration,
         task?.start_date?.slice(0, 10) ?? "",
-        (task?.dependencies ?? []).map((id) => `#${id}`).join("; "),
+        (task?.dependencies ?? []).map((id) => `#${taskNumberById.get(id) ?? "?"}`).join("; "),
         item.earliest_start,
         item.earliest_finish,
         item.latest_start,
@@ -596,8 +603,8 @@ async function loadCriticalPath() {
                                     <span key={dependencyId}>
                                     {index > 0 && ", "}
                                     {dependencyTask
-                                        ? `#${dependencyTask.id} — ${dependencyTask.name}`
-                                        : `Task #${dependencyId}`}
+                                        ? `#${taskNumberById.get(dependencyTask.id) ?? "?"} — ${dependencyTask.name}`
+                                        : "Task unavailable"}
                                     </span>
                                 );
                                 })}
@@ -605,7 +612,7 @@ async function loadCriticalPath() {
                             )}
 
                             <div className="task-metadata">
-                          <span>#{task.id}</span>
+                          <span>#{taskNumberById.get(task.id) ?? "?"}</span>
                           <span>{task.duration} day{task.duration !== 1 ? "s" : ""}</span>
                           <span>Starts {task.start_date.slice(0, 10)}</span>
                         </div>
@@ -827,7 +834,7 @@ async function loadCriticalPath() {
                     >
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontWeight: 700, overflowWrap: "anywhere" }}>
-                          {item.task_name}
+                          #{taskNumberById.get(item.task_id) ?? "?"} — {item.task_name}
                           {risk && (
                             <span
                               title={risk.risk_reasons.join(" ") || `${risk.risk_level} schedule risk`}
@@ -858,7 +865,7 @@ async function loadCriticalPath() {
                           <div style={{ marginTop: 4, fontSize: 11, color: "var(--text-secondary, #666)" }}>
                             ← Depends on: {task.dependencies.map((dependencyId, index) => {
                               const dependency = tasks.find((candidate) => candidate.id === dependencyId);
-                              return `${index > 0 ? ", " : ""}${dependency ? `${dependency.name} (#${dependencyId})` : `Task #${dependencyId}`}`;
+                              return `${index > 0 ? ", " : ""}${dependency ? `${dependency.name} (#${taskNumberById.get(dependencyId) ?? "?"})` : "Task unavailable"}`;
                             }).join("")}
                           </div>
                         )}
@@ -941,7 +948,7 @@ async function loadCriticalPath() {
               ? criticalPath.critical_path
                   .map((id) => {
                     const task = tasks.find((item) => item.id === id);
-                    return task ? `${task.name} (#${id})` : `Task #${id}`;
+                    return task ? `${task.name} (#${taskNumberById.get(id) ?? "?"})` : "Task unavailable";
                   })
                   .join(" → ")
               : "No tasks in the critical path."}
@@ -968,7 +975,7 @@ async function loadCriticalPath() {
                   key={item.task_id}
                   className={item.is_critical ? "task-critical-row" : ""}
                 >
-                  <td>{item.task_name}</td>
+                  <td>#{taskNumberById.get(item.task_id) ?? "?"} — {item.task_name}</td>
                   <td>{item.duration}</td>
                   <td>{item.earliest_start}</td>
                   <td>{item.earliest_finish}</td>
@@ -1043,7 +1050,7 @@ async function loadCriticalPath() {
                         <tbody>
                           {scheduleRisk.tasks.map((item) => (
                             <tr key={item.id}>
-                              <td>{item.name}</td>
+                              <td>#{taskNumberById.get(item.id) ?? "?"} — {item.name}</td>
                               <td>
                                 <strong>{item.risk_level.toUpperCase()}</strong>
                               </td>
@@ -1051,7 +1058,7 @@ async function loadCriticalPath() {
                               <td>{item.is_critical ? "YES" : "NO"}</td>
                               <td>
                                 {item.blocked_by.length
-                                  ? item.blocked_by.map((id) => `#${id}`).join(", ")
+                                  ? item.blocked_by.map((id) => `#${taskNumberById.get(id) ?? "?"}`).join(", ")
                                   : "None"}
                               </td>
                               <td>{item.risk_reasons.join(" ") || "No active risk."}</td>
@@ -1102,7 +1109,7 @@ async function loadCriticalPath() {
                       <option value="">Select a task</option>
                       {tasks.map((task) => (
                         <option key={task.id} value={task.id}>
-                          #{task.id} — {task.name}
+                          #{taskNumberById.get(task.id) ?? "?"} — {task.name}
                         </option>
                       ))}
                     </select>
@@ -1170,7 +1177,7 @@ async function loadCriticalPath() {
                         {simulationResult.original.critical_path
                           .map((id) => {
                             const item = tasks.find((task) => task.id === id);
-                            return item ? `${item.name} (#${id})` : `Task #${id}`;
+                            return item ? `${item.name} (#${taskNumberById.get(id) ?? "?"})` : "Task unavailable";
                           })
                           .join(" → ") || "No critical path."}
                       </p>
@@ -1182,14 +1189,14 @@ async function loadCriticalPath() {
                         {simulationResult.simulated.critical_path
                           .map((id) => {
                             const item = tasks.find((task) => task.id === id);
-                            return item ? `${item.name} (#${id})` : `Task #${id}`;
+                            return item ? `${item.name} (#${taskNumberById.get(id) ?? "?"})` : "Task unavailable";
                           })
                           .join(" → ") || "No critical path."}
                       </p>
                     </div>
 
                     <p className="task-critical-legend">
-                      Task #{simulationResult.task_id} was assigned an
+                      Task #{taskNumberById.get(simulationResult.task_id) ?? "?"} was assigned an
                       additional {simulationResult.added_duration} day(s).
                       This is a simulation only; saved task data is unchanged.
                     </p>
@@ -1335,7 +1342,7 @@ async function loadCriticalPath() {
                     .filter((task) => task.id !== editingTask?.id)
                     .map((task) => (
                         <option key={task.id} value={task.id}>
-                        #{task.id} — {task.name}
+                        #{taskNumberById.get(task.id) ?? "?"} — {task.name}
                         </option>
                     ))}
                 </select>

@@ -68,6 +68,12 @@ export default function WorkspaceTool() {
 
   const selectedTool = validTool ? (tool as ToolName) : null;
 
+  // Database IDs stay internal; show compact, project-local task numbers.
+  const taskNumberById = useMemo(
+    () => new Map<number, number>(tasks.map((task, index) => [task.id, index + 1])),
+    [tasks],
+  );
+
   useEffect(() => {
     let cancelled = false;
 
@@ -229,7 +235,7 @@ export default function WorkspaceTool() {
         id: String(task.id),
         position: { x: depth * 280, y: row * 125 },
         data: {
-          label: `#${task.id} — ${task.name}\n${task.status} · ${task.duration} day(s) · ${taskRisk} risk`,
+          label: `#${taskNumberById.get(task.id) ?? "?"} — ${task.name}\n${task.status} · ${task.duration} day(s) · ${taskRisk} risk`,
         },
         style: {
           width: 220,
@@ -265,7 +271,7 @@ export default function WorkspaceTool() {
     );
 
     return { nodes, edges };
-  }, [tasks, riskByTask, criticalIds]);
+  }, [tasks, riskByTask, criticalIds, taskNumberById]);
 
   const selectedGraphTask = tasks.find((task) => task.id === selectedGraphTaskId) ?? null;
 
@@ -424,11 +430,16 @@ export default function WorkspaceTool() {
 
             {selectedGraphTask && (
               <div className="task-critical-sequence" style={{ marginTop: 16 }}>
-                <strong>SELECTED TASK: #{selectedGraphTask.id} — {selectedGraphTask.name}</strong>
+                <strong>SELECTED TASK: #{taskNumberById.get(selectedGraphTask.id) ?? "?"} — {selectedGraphTask.name}</strong>
                 <p>Status: {selectedGraphTask.status} · Duration: {selectedGraphTask.duration} day(s) · Priority: {selectedGraphTask.priority}</p>
                 <p>
                   Prerequisites: {(selectedGraphTask.dependencies ?? []).length
-                    ? selectedGraphTask.dependencies.map((id) => tasks.find((item) => item.id === id)?.name ?? `Task #${id}`).join(", ")
+                    ? selectedGraphTask.dependencies.map((id) => {
+                      const prerequisite = tasks.find((item) => item.id === id);
+                      return prerequisite
+                        ? `#${taskNumberById.get(id) ?? "?"} — ${prerequisite.name}`
+                        : "Task unavailable";
+                    }).join(", ")
                     : "None"}
                 </p>
                 <p>Critical path: {criticalIds.has(selectedGraphTask.id) ? "Yes" : "No"} · Risk: {riskByTask.get(selectedGraphTask.id)?.risk_level ?? "Unknown"}</p>
@@ -476,7 +487,7 @@ export default function WorkspaceTool() {
 
                     return (
                       <tr key={schedule.task_id}>
-                        <td>{schedule.task_name}</td>
+                        <td>#{taskNumberById.get(schedule.task_id) ?? "?"} — {schedule.task_name}</td>
                         <td style={{ minWidth: 200 }}>
                           <div
                             style={{
@@ -535,7 +546,10 @@ export default function WorkspaceTool() {
                   <strong>CRITICAL SEQUENCE</strong>
                   <p>
                     {criticalPath.critical_path
-                      .map((id) => tasks.find((task) => task.id === id)?.name ?? `Task #${id}`)
+                      .map((id) => {
+                        const task = tasks.find((item) => item.id === id);
+                        return task ? `#${taskNumberById.get(id) ?? "?"} — ${task.name}` : "Task unavailable";
+                      })
                       .join(" → ") || "No critical path"}
                   </p>
                 </div>
@@ -560,7 +574,7 @@ export default function WorkspaceTool() {
                           key={item.task_id}
                           className={item.is_critical ? "task-critical-row" : ""}
                         >
-                          <td>{item.task_name}</td>
+                          <td>#{taskNumberById.get(item.task_id) ?? "?"} — {item.task_name}</td>
                           <td>{item.duration}</td>
                           <td>{item.earliest_start}</td>
                           <td>{item.earliest_finish}</td>
@@ -594,7 +608,7 @@ export default function WorkspaceTool() {
                   <option value="">Select a task</option>
                   {tasks.map((task) => (
                     <option key={task.id} value={task.id}>
-                      #{task.id} — {task.name}
+                      #{taskNumberById.get(task.id) ?? "?"} — {task.name}
                     </option>
                   ))}
                 </select>
@@ -642,7 +656,10 @@ export default function WorkspaceTool() {
                   <strong>SIMULATED CRITICAL PATH</strong>
                   <p>
                     {simulation.simulated.critical_path
-                      .map((id) => tasks.find((task) => task.id === id)?.name ?? `Task #${id}`)
+                      .map((id) => {
+                        const task = tasks.find((item) => item.id === id);
+                        return task ? `#${taskNumberById.get(id) ?? "?"} — ${task.name}` : "Task unavailable";
+                      })
                       .join(" → ") || "No critical path"}
                   </p>
                 </div>
